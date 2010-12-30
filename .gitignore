@@ -1,5 +1,6 @@
 .DS_Store
-/.idea
+.idea/
+*.iml
 /project/boot
 /project/build/target
 /project/plugins/lib_managed/
