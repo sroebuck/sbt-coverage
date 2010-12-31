@@ -1,132 +1,237 @@
+/*
+ * Copyright (c) ProInnovate Limited, 2010
+ */
+
 package com.proinnovate.sbt.coverage
 
 import _root_.sbt._
 import _root_.sbt.processor.BasicProcessor
+import java.io.File
 
+/**
+ * An sbt processor to perform code coverage analysis on the running of tests of a standard sbt scala project.  This
+ * processor makes heavy use of the undercover code coverage library.
+ */
 class SbtCoverageProcessor extends BasicProcessor {
-  
+
+  /**
+   * Respond to commands sent to this processor.
+   */
   def apply(project: Project, args: String) {
-    project.log.info("Result of compile was %s".format(project.act("compile")))
-    project.log.info("Processor test. args: '" + args + "'")
+    project match {
+      case scalaProject:BasicScalaProject => {
+        args match {
+          case "compile" =>
+            project.act("test-compile")
+            project.log.info("Instrumenting all classes for code coverage analysis")
+            instrumentAllClasses(scalaProject)
+          case "test" =>
+            project.act("test-compile")
+            project.log.info("Instrumenting all classes for code coverage analysis")
+            instrumentAllClasses(scalaProject)
+            project.log.info("Copying resources")
+            project.act("copy-resources")
+            project.act("copy-test-resources")
+            project.log.info("Testing code coverage")
+            testCoverage(scalaProject)
+          case "report" =>
+            project.act("test-compile")
+            project.log.info("Instrumenting all classes for code coverage analysis")
+            instrumentAllClasses(scalaProject)
+            project.log.info("Copying resources")
+            project.act("copy-resources")
+            project.act("copy-test-resources")
+            project.log.info("Testing code coverage")
+            testCoverage(scalaProject)
+            project.log.info("Producing coverage report")
+            testCoverageReport(scalaProject)
+          case "clean" =>
+            cleanCoverageOutput(scalaProject)
+          case "" =>
+            apply(project, "report")
+//          case "test" =>
+//            val task = scalaProject.testTask()
+//            task.run
+          case x =>
+            project.log.warn("Unknown command: " + x)
+        }
+      }
+      case _ => project.log.error("This instrumentation process will only work on a Scala project!")
+    }
   }
 
-  // =================================================================================================================
-  // INSTRUMENTATION ACTIONS
-  // =================================================================================================================
 
-  // Create code coverage task `instrument` which instruments the compiled classes for the `undercover`
-  // code coverage tool...
-/*
-
-  lazy val instrument = instrumentAction
-
-  def instrumentAction = instrumentTask().dependsOn(compile,testCompile)
-          .describedAs("Instrument project classes ready for code coverage testing.")
-
-  def instrumentTask() {
-    log.info("Instrumenting main classes")
-    instrumentClasses(mainCompilePath, outputPath / "classes-inst")
-    log.info("Instrumenting test classes")
-    instrumentClasses(testCompilePath, outputPath / "test-classes-inst")
-    None
+  /**
+   * Instrument the compiled class files, both the main and test classes.
+   *
+   * @param project the project to be instrumented.
+   */
+  private def instrumentAllClasses(project: BasicScalaProject) {
+    // Instrument main classes...
+    instrumentClasses(project.mainCompilePath, project.outputPath / "classes-inst")
+    // Instrument test classes...
+    instrumentClasses(project.testCompilePath, project.outputPath / "test-classes-inst")
   }
 
-  // Create a code coverage test task `test-coverage` which runs the tests over the instrumented
-  // classes...
 
-  lazy val testCoverage = testCoverageAction
+  /**
+   * Use undercover to instrument the compiled classes in the given input path and put the instrumented ones in the
+   * given output path.
+   *
+   * @param inputPath path to the root of the class files to be instrumented.
+   * @param outputPath path to the location where the instrumented versions of the classes are to be placed.
+   */
+  private def instrumentClasses(inputPath: Path, outputPath: Path) {
+    if (inputPath.exists) {
+      val instr = new undercover.instrument.OfflineInstrument
+      val paths = new java.util.ArrayList[java.io.File]
+      paths.add(inputPath.asFile)
+      instr.setInstrumentPaths(paths)
+      instr.setOutputDirectory(outputPath.asFile)
 
-  def testCoverageAction = testCoverageTask() dependsOn (instrument)
+      val globFilter = new undercover.instrument.filter.GlobFilter(Array(), Array())
+      instr.setFilter(globFilter)
 
-  def testCoverageTask() {
-    var instTestClasspath = testClasspath.
-            --- (outputPath / "classes").
-            --- (outputPath / "test-classes").
-            +++ (outputPath / "classes-inst" / "classes").
-            +++ (outputPath / "test-classes-inst" / "classes").
-            +++ (rootProject.info.projectPath ** "undercover*.jar")
+      val metaFile = (outputPath / "undercover.md").asFile
+      instr.setMetaDataFile(metaFile)
 
-    val coverageDataPath = outputPath / "coverage" / "undercover.cd"
-    log.debug("Coverage data path: " + coverageDataPath.absolutePath)
+      instr.fullcopy()
+    }
+  }
 
-    val settings = new undercover.runtime.UndercoverSettings()
+
+  /**
+   * Produce code coverage data from pre-instrumented classes by running the test classes.
+   *
+   * Note that there is currently a problem with this implementation.  The undercover instrumentation code collects
+   * coverage data and waits for the JVM to exit in order to write that data out.  However, when running under sbt
+   * the JVM continues after the tests have completed so the coverage data is not written until you exit sbt completely.
+   *
+   * So, to make this work at the moment you have to run the code coverage code.  Exit sbt and then run it again to
+   * build a report from the previous runs' output.
+   *
+   * @param project the project to be tested.
+   */
+  private def testCoverage(project: BasicScalaProject) {
+    // Create a classpath of all the classes including dependent libraries that need to be loaded to run the tests over
+    // the instrumented versions of the code.  This is generated by taking the default testClassPath, removing all the
+    // uninstrumented main and test classes and adding the instrumented ones.  It also adds the undercover library to
+    // the classpath.
+    val instTestClasspath = project.testClasspath.
+            --- (project.outputPath / "classes").
+            --- (project.outputPath / "test-classes").
+            +++ (project.outputPath / "classes-inst" / "classes").
+            +++ (project.outputPath / "test-classes-inst" / "classes").
+            +++ (Path.finder(List(project.rootProject.info.projectPath.asFile)) ** GlobFilter("undercover*.jar"))
+
+    val coverageDataPath = project.outputPath / "coverage" / "undercover.cd"
+    project.log.info("Coverage data path: " + coverageDataPath.absolutePath)
+
+    val settings = new undercover.runtime.UndercoverSettings
     settings.setCoverageSaveOnExit(true)
     settings.setCoverageFile(coverageDataPath.asFile)
-    (outputPath / "classes-inst").asFile.mkdirs
-    val propertiesFile = (outputPath / "classes-inst" / "undercover.properties").asFile
+    (project.outputPath / "classes-inst" / "classes").asFile.mkdirs
+    val propertiesFile = (project.outputPath / "classes-inst" / "classes" / "undercover.properties").asFile
     settings.save(propertiesFile)
 
-    testTask(testFrameworks, instTestClasspath, testCompileConditional.analysis, testOptions)
+    class UndercoverTestCompileConfig extends project.TestCompileConfig {
+      override def label = "instrumentedTest"
+      override def classpath = instTestClasspath
+    }
+    val compileConditional = new CompileConditional(new UndercoverTestCompileConfig, project.buildCompiler)
+
+    val instrumentedTestTask = project.testTask(project.testFrameworks, instTestClasspath, compileConditional.analysis,
+          project.testOptions)
+    _root_.sbt.RunnerHack.run(project, instrumentedTestTask, "InstrumentedTestTask")
+//    exitUndercoverRuntime(project)
   }
 
-  lazy val testCoverageReport = testCoverageReportAction
 
-  def testCoverageReportAction = testCoverageReportTask() dependsOn(testCoverage)
+  /**
+   * Produce a code coverage report from the code coverage data previously produced by undercover.
+   *
+   * @param project the project to be reported on.
+   */
+  private def testCoverageReport(project: BasicScalaProject) {
+    val sourceFinder = new undercover.report.SourceFinder
+    val sourcePathFiles = (project.testSources +++ project.mainSources).getFiles.toList
+    sourceFinder.setSourcePaths(listToJavaList(sourcePathFiles))
+    project.log.info("sourcePathFiles = " + sourcePathFiles)
 
-  def testCoverageReportTask() {
-    val sourceFinder = new undercover.report.SourceFinder()
-    val sourcePathFiles = (testSources +++ mainSources).getFiles
-    val sourcePathsJavaList = java.util.Arrays.asList(sourcePathFiles.toArray: _*)
-    sourceFinder.setSourcePaths(sourcePathsJavaList)
-
-    val metaDataFile = (outputPath / "classes-inst" / "undercover.md").asFile
-    val coverageDataFile = (outputPath / "coverage" / "undercover.cd").asFile
+    val metaDataFile = (project.outputPath / "classes-inst" / "undercover.md").asFile
+    val coverageDataFile = (project.outputPath / "coverage" / "undercover.cd").asFile
     val builder = new undercover.report.ReportDataBuilder(metaDataFile, coverageDataFile)
-    builder.setProjectName(projectName.toString)
+    builder.setProjectName(project.projectName.toString)
     builder.setSourceFinder(sourceFinder)
     val reportData = builder.build()
     val outputEncoding = "UTF-8"
 
     val formats = List("html")
     formats.foreach { format =>
-      log.info("Generating " + format + " report")
+      project.log.info("Generating " + format + " report")
       format match {
         case "html" => {
-            val report = new undercover.report.html.HtmlReport()
+            val report = new undercover.report.html.HtmlReport
             report.setReportData(reportData)
-            val outputDirectory = (outputPath / "coverage" / "html").asFile
+            val outputDirectory = (project.outputPath / "coverage" / "html").asFile
             report.setOutputDirectory(outputDirectory)
             report.setEncoding(outputEncoding)
             report.generate()
           }
         case "coberturaxml" => {
             val report = new undercover.report.xml.CoberturaXmlReport(reportData)
-            val outputFile = (outputPath / "coverage" / "cobertura.xml").asFile
+            val outputFile = (project.outputPath / "coverage" / "cobertura.xml").asFile
             report.writeTo(outputFile, outputEncoding)
           }
         case "emmaxml" => {
             val report = new undercover.report.xml.EmmaXmlReport(reportData)
-            val outputFile = (outputPath / "coverage" / "emma.xml").asFile
+            val outputFile = (project.outputPath / "coverage" / "emma.xml").asFile
             report.writeTo(outputFile, outputEncoding)
           }
-        case _ => log.warn("Unknown report format: " + format)
+        case _ => project.log.warn("Unknown report format: " + format)
       }
     }
-
-    None
   }
-*/
+
 
   /**
-   * Use undercover to instrument the compiled main and test classes and put them in instrumented
-   * classes directories within the target directory.
+   * Clean the project of code coverage output files which are most likely within the target directory of your project.
+   *
+   * @param project the project to be cleaned of code coverage output files.
    */
-  private def instrumentClasses(inputPath: Path, outputPath: Path) {
+  private def cleanCoverageOutput(project: BasicScalaProject) {
+    def deleteAll(dfile: File) {
+      if (dfile.isDirectory) dfile.listFiles.foreach(deleteAll)
+      dfile.delete
+    }
 
-    val instr = new undercover.instrument.OfflineInstrument()
-    val paths = new java.util.ArrayList[java.io.File]()
-    paths.add(inputPath.asFile)
-    instr.setInstrumentPaths(paths)
+    deleteAll((project.outputPath / "coverage").asFile)
+    deleteAll((project.outputPath / "classes-inst").asFile)
+    deleteAll((project.outputPath / "test-classes-inst").asFile)
+  }
 
-    instr.setOutputDirectory(outputPath.asFile)
 
-    val globFilter = new undercover.instrument.filter.GlobFilter(Array[String](), Array[String]())
-    instr.setFilter(globFilter)
+  /**
+   * Method intended to shutdown the Undercover probe and save the code coverage statistics.  However, sbt runs the
+   * Probe under a different classloader so Probe.INSTANCE is a different instance from the running one and this
+   * basically doesn't do anything useful and causes a null pointer exception.
+   */
+  private def exitUndercoverRuntime(project: BasicScalaProject) {
+    // XXX: Don't use this! (see above)
+    val probe = undercover.runtime.Probe.INSTANCE
 
-    val metaFile = (outputPath / "undercover.md").asFile
-    instr.setMetaDataFile(metaFile)
+    (project.outputPath / "coverage").asFile.mkdirs
+    val coverageData = probe.getCoverageData;
+    println("getCoverageFile = " + probe.getSettings.getCoverageFile)
+    coverageData.save(probe.getSettings.getCoverageFile);
+  }
 
-    instr.fullcopy()
+
+  /**
+   * Utility method to convert a Scala list to a Java list for some of the undercover methods which require Java lists.
+   */
+  private def listToJavaList[T](sequence: Seq[T]) = {
+    sequence.foldLeft(new java.util.ArrayList[T](sequence.size)){ (al, e) => al.add(e); al }
   }
 
 }

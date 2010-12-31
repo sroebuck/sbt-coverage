@@ -1,0 +1,4 @@
+publish-local
+*remove coverage
+*coverage is com.proinnovate sbt-coverage 0.1-SNAPSHOT
+coverage instrument
