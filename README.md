@@ -10,14 +10,6 @@ code coverage tool.
 Known issues
 ------------
 
-Currently the tool collect code coverage data from running the full suite of
-project tests from within sbt.  However, the data is only written to disk when
-the JVM halts which is when sbt exits, not when the tests complete.
-Consequently, the first report that is produced will have no coverage. Exiting
-sbt and then re-running the report a second time will produce a coverage
-report using the data from the previous run.  I am investigating ways of
-working around this.
-
 There is no code listing output in the current reports.  I haven't looked into
 this in detail to discover what is going wrong.
 
@@ -55,23 +47,8 @@ Java project and (in the sbt command line) enter the command:
     coverage
 
 This will compile your code, instrument the classes, run all your tests with
-the instrumented main classes and then produce a test report.
-
-However, until a current issue is fixed you must then exit sbt, restart it and
-re-run the coverage report:
-
-    exit
-    sbt
-    coverage
-    
-Now you should have a coverage report here:
-
-    target/scala-2.x.x/coverage/html/index.html
-    
-where `scala-2.x.x` matches the scala version set for your project. The
-directory with the file above has a lot of other related report files, but
-the one above is the main index file.  Open this in your web-browser of
-choice and enjoy!
+the instrumented main classes and then produce a test report which should be
+automatically opened in your default web browser.
 
 ### Additional commands
 

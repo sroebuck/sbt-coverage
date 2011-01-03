@@ -7,6 +7,7 @@ package com.proinnovate.sbt.coverage
 import _root_.sbt._
 import _root_.sbt.processor.BasicProcessor
 import java.io.File
+import java.util.logging.{Level,Logger}
 
 /**
  * An sbt processor to perform code coverage analysis on the running of tests of a standard sbt scala project.  This
@@ -18,6 +19,10 @@ class SbtCoverageProcessor extends BasicProcessor {
    * Respond to commands sent to this processor.
    */
   def apply(project: Project, args: String) {
+    // Turn off excessive undercover logging...
+    Logger.getLogger("").setLevel(Level.OFF)
+
+    // Handle command...
     project match {
       case scalaProject:BasicScalaProject => {
         args match {
@@ -122,13 +127,13 @@ class SbtCoverageProcessor extends BasicProcessor {
             --- (project.outputPath / "test-classes").
             +++ (project.outputPath / "classes-inst" / "classes").
             +++ (project.outputPath / "test-classes-inst" / "classes").
-            +++ (Path.finder(List(project.rootProject.info.projectPath.asFile)) ** GlobFilter("undercover*.jar"))
+            +++ (Path.finder(List(project.rootProject.info.projectPath.asFile)) ** GlobFilter("undercover*.jar")).
+            +++ (Path.finder(List(project.rootProject.info.projectPath.asFile)) ** GlobFilter("sbt-coverage*.jar"))
 
     val coverageDataPath = project.outputPath / "coverage" / "undercover.cd"
-    project.log.info("Coverage data path: " + coverageDataPath.absolutePath)
 
     val settings = new undercover.runtime.UndercoverSettings
-    settings.setCoverageSaveOnExit(true)
+    settings.setCoverageSaveOnExit(false)
     settings.setCoverageFile(coverageDataPath.asFile)
     (project.outputPath / "classes-inst" / "classes").asFile.mkdirs
     val propertiesFile = (project.outputPath / "classes-inst" / "classes" / "undercover.properties").asFile
@@ -140,10 +145,29 @@ class SbtCoverageProcessor extends BasicProcessor {
     }
     val compileConditional = new CompileConditional(new UndercoverTestCompileConfig, project.buildCompiler)
 
+    /**
+     * A curriable function that will take a project and produce a function that takes a classloader and returns an
+     * optional status string.  This critical function instantiates the `UndercoverClassLoaderRunner` within the same
+     * class loader as the tests being run and the undercover probe code.
+     *
+     * @param project the current project.
+     * @param classLoader the class loader used to run the tests and the instance of undercover carrying out the code
+     *    coverage analysis.
+     */
+    def undercoverCleanup(project: Project)(classLoader: ClassLoader): Option[String] = {
+      val obj = Class.forName("com.proinnovate.sbt.coverage.UndercoverClassLoaderRunner", true, classLoader)
+      (project.outputPath / "coverage").asFile.mkdirs
+      val instance = obj.newInstance
+      val method = obj.getMethod("exitUndercoverRuntime")
+      method.invoke(instance)
+      None
+    }
+
+    val exitUndercoverTestCleanup: project.TestOption = new project.TestCleanup(undercoverCleanup(project))
+    val testOptions: Seq[project.TestOption] = project.testOptions ++ Seq(exitUndercoverTestCleanup)
     val instrumentedTestTask = project.testTask(project.testFrameworks, instTestClasspath, compileConditional.analysis,
-          project.testOptions)
+          testOptions)
     _root_.sbt.RunnerHack.run(project, instrumentedTestTask, "InstrumentedTestTask")
-//    exitUndercoverRuntime(project)
   }
 
 
@@ -156,7 +180,6 @@ class SbtCoverageProcessor extends BasicProcessor {
     val sourceFinder = new undercover.report.SourceFinder
     val sourcePathFiles = (project.testSources +++ project.mainSources).getFiles.toList
     sourceFinder.setSourcePaths(listToJavaList(sourcePathFiles))
-    project.log.info("sourcePathFiles = " + sourcePathFiles)
 
     val metaDataFile = (project.outputPath / "classes-inst" / "undercover.md").asFile
     val coverageDataFile = (project.outputPath / "coverage" / "undercover.cd").asFile
@@ -177,6 +200,10 @@ class SbtCoverageProcessor extends BasicProcessor {
             report.setOutputDirectory(outputDirectory)
             report.setEncoding(outputEncoding)
             report.generate()
+            // Launch report file in operating system default associated application...
+            if (java.awt.Desktop.isDesktopSupported) {
+              java.awt.Desktop.getDesktop.open(new File(outputDirectory, "index.html"))              
+            }
           }
         case "coberturaxml" => {
             val report = new undercover.report.xml.CoberturaXmlReport(reportData)
@@ -208,22 +235,6 @@ class SbtCoverageProcessor extends BasicProcessor {
     deleteAll((project.outputPath / "coverage").asFile)
     deleteAll((project.outputPath / "classes-inst").asFile)
     deleteAll((project.outputPath / "test-classes-inst").asFile)
-  }
-
-
-  /**
-   * Method intended to shutdown the Undercover probe and save the code coverage statistics.  However, sbt runs the
-   * Probe under a different classloader so Probe.INSTANCE is a different instance from the running one and this
-   * basically doesn't do anything useful and causes a null pointer exception.
-   */
-  private def exitUndercoverRuntime(project: BasicScalaProject) {
-    // XXX: Don't use this! (see above)
-    val probe = undercover.runtime.Probe.INSTANCE
-
-    (project.outputPath / "coverage").asFile.mkdirs
-    val coverageData = probe.getCoverageData;
-    println("getCoverageFile = " + probe.getSettings.getCoverageFile)
-    coverageData.save(probe.getSettings.getCoverageFile);
   }
 
 
