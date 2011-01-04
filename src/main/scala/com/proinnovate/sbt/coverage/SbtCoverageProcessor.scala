@@ -178,8 +178,8 @@ class SbtCoverageProcessor extends BasicProcessor {
    */
   private def testCoverageReport(project: BasicScalaProject) {
     val sourceFinder = new undercover.report.SourceFinder
-    val sourcePathFiles = (project.testSources +++ project.mainSources).getFiles.toList
-    sourceFinder.setSourcePaths(listToJavaList(sourcePathFiles))
+    val sourcePathRoots = (project.mainSourceRoots +++ project.testSourceRoots).getFiles.toList
+    sourceFinder.setSourcePaths(listToJavaList(sourcePathRoots))
 
     val metaDataFile = (project.outputPath / "classes-inst" / "undercover.md").asFile
     val coverageDataFile = (project.outputPath / "coverage" / "undercover.cd").asFile

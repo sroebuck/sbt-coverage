@@ -7,12 +7,6 @@ This code is currently under development.  It produces code coverage reports
 of projects in sbt using the [undercover](http://code.google.com/p/undercover/)
 code coverage tool.
 
-Known issues
-------------
-
-There is no code listing output in the current reports.  I haven't looked into
-this in detail to discover what is going wrong.
-
 Building and installing
 -----------------------
 
