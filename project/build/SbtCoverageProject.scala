@@ -10,6 +10,9 @@ class SbtCoverageProject(info: ProjectInfo) extends ProcessorProject(info) with 
 
   val undercoverRepo = "undercover-repo" at "http://undercover.googlecode.com/svn/maven/repository/"
 
+  // Testing...
+  val scalatest = "org.scalatest" % "scalatest" % "1.1" % "test"
+
   // FIXME:  I don't think anything that follows does anything of value!
   // repository config for publishing
   override def managedStyle = ManagedStyle.Maven

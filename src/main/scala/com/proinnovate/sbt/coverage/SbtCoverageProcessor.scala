@@ -4,6 +4,7 @@
 
 package com.proinnovate.sbt.coverage
 
+import com.proinnovate.sbt.utils.SbtVersion
 import _root_.sbt._
 import _root_.sbt.processor.BasicProcessor
 import java.io.File
@@ -22,47 +23,52 @@ class SbtCoverageProcessor extends BasicProcessor {
     // Turn off excessive undercover logging...
     Logger.getLogger("").setLevel(Level.OFF)
 
-    // Handle command...
-    project match {
-      case scalaProject:BasicScalaProject => {
-        args match {
-          case "compile" =>
-            project.act("test-compile")
-            project.log.info("Instrumenting all classes for code coverage analysis")
-            instrumentAllClasses(scalaProject)
-          case "test" =>
-            project.act("test-compile")
-            project.log.info("Instrumenting all classes for code coverage analysis")
-            instrumentAllClasses(scalaProject)
-            project.log.info("Copying resources")
-            project.act("copy-resources")
-            project.act("copy-test-resources")
-            project.log.info("Testing code coverage")
-            testCoverage(scalaProject)
-          case "report" =>
-            project.act("test-compile")
-            project.log.info("Instrumenting all classes for code coverage analysis")
-            instrumentAllClasses(scalaProject)
-            project.log.info("Copying resources")
-            project.act("copy-resources")
-            project.act("copy-test-resources")
-            project.log.info("Testing code coverage")
-            testCoverage(scalaProject)
-            project.log.info("Producing coverage report")
-            testCoverageReport(scalaProject)
-          case "clean" =>
-            cleanCoverageOutput(scalaProject)
-          case "" =>
-            apply(project, "report")
-//          case "test" =>
-//            val task = scalaProject.testTask()
-//            task.run
-          case x =>
-            project.log.warn("Unknown command: " + x)
+    // Check SBT version is 0.7.5.RC0 or greater as this is required for the test callback classloader functionality...
+    if (SbtVersion(project.sbtVersion.value) < SbtVersion("0.7.5.RC0")) {
+      project.log.error("This coverage processor relies on functionality introduced in sbt version 0.7.5RC0.  " +
+          "You are using an earlier version!")
+    } else {
+      // Handle command...
+      project match {
+        case scalaProject: BasicScalaProject => {
+          args match {
+            case "compile" =>
+              project.act("test-compile")
+              project.log.info("Instrumenting all classes for code coverage analysis")
+              instrumentAllClasses(scalaProject)
+            case "test" =>
+              project.act("test-compile")
+              project.log.info("Instrumenting all classes for code coverage analysis")
+              instrumentAllClasses(scalaProject)
+              project.log.info("Copying resources")
+              project.act("copy-resources")
+              project.act("copy-test-resources")
+              project.log.info("Testing code coverage")
+              testCoverage(scalaProject)
+            case "report" =>
+              project.act("test-compile")
+              project.log.info("Instrumenting all classes for code coverage analysis")
+              instrumentAllClasses(scalaProject)
+              project.log.info("Copying resources")
+              project.act("copy-resources")
+              project.act("copy-test-resources")
+              project.log.info("Testing code coverage")
+              testCoverage(scalaProject)
+              project.log.info("Producing coverage report")
+              testCoverageReport(scalaProject)
+            case "clean" =>
+              cleanCoverageOutput(scalaProject)
+            case "" =>
+              apply(project, "report")
+            case x =>
+              project.log.warn("Unknown command: " + x)
+          }
         }
+        case _ => project.log.error("This instrumentation process will only work on a Scala project!")
       }
-      case _ => project.log.error("This instrumentation process will only work on a Scala project!")
+
     }
+
   }
 
 
