@@ -11,8 +11,8 @@ Prerequisites
 -------------
 
 The current version of this sbt processor relies on test callback classloader
-information provided in version `0.7.5.RC0`` of sbt.  From all the testing I have
-carried out sbt `0.7.5.RC0`` is as stable as the current stable release `0.7.4` so
+information provided in version `0.7.5.RC0` of sbt.  From all the testing I have
+carried out sbt `0.7.5.RC0` is as stable as the current stable release `0.7.4` so
 you should be able to upgrade the version for each sbt project by entering:
 
     > set sbt.version 0.7.5.RC0
