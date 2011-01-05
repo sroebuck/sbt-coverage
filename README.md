@@ -61,6 +61,10 @@ This will compile your code, instrument the classes, run all your tests with
 the instrumented main classes and then produce a test report which should be
 automatically opened in your default web browser.
 
+The resulting output should look a bit like this:
+
+![Example screen shot](http://farm3.static.flickr.com/2558/4109571846_5bc8da4cc3.jpg)
+
 ### Additional commands
 
 In addition to the standard `coverage` command you can also enter:
@@ -75,5 +79,11 @@ In addition to the standard `coverage` command you can also enter:
    directory.  This is probably a good thing to do whenever you are producing
    a new report as there is currently no code which checks to make sure that
    old files are removed.
-   
+
+License
+-------
+
+This software is Copyright (c) 2011, Stuart Roebuck and licensed under the standard
+MIT license (more specifically referred to as the Expat license).  See the `LICENSE`
+file for details
 

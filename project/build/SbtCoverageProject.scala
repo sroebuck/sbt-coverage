@@ -13,9 +13,13 @@ class SbtCoverageProject(info: ProjectInfo) extends ProcessorProject(info) with 
   // Testing...
   val scalatest = "org.scalatest" % "scalatest" % "1.1" % "test"
 
-  // FIXME:  I don't think anything that follows does anything of value!
-  // repository config for publishing
+  // postereous.Publish configuration...
+  override def extension = ".md"
+  override def extraTags = "sbt" :: "undercover" :: "processor" :: super.extraTags
+
+  // Maven publishing configuration...
   override def managedStyle = ManagedStyle.Maven
-  lazy val publishTo = Resolver.file("Maven Repository", new java.io.File("maven"))
-  
+  val publishTo = "Scala Tools Nexus" at "http://nexus.scala-tools.org/content/repositories/releases/"
+  Credentials(Path.userHome / ".ivy2" / ".credentials", log)
+
 }
