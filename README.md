@@ -76,8 +76,9 @@ In addition to the standard `coverage` command you can also enter:
    nothing else.
  * `coverage test` - to compile, instrument and test but not produce a
    report.
- * `coverage report` - a long form of just entering `coverage`.  This does
-   everything.
+ * `coverage report` - a long form of just entering `coverage`.  This
+   does everything.  It optionally takes a space-separated list of
+   output formats, which can contain `html`, `coberturaxml`, or `emmaxml`.
  * `coverage clean` - clean the code coverage output files from your target
    directory.  This is probably a good thing to do whenever you are producing
    a new report as there is currently no code which checks to make sure that

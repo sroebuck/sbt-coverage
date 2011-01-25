@@ -16,6 +16,8 @@ import java.util.logging.{Level,Logger}
  */
 class SbtCoverageProcessor extends BasicProcessor {
 
+  val ReportPattern = "report((?: [a-z]*)*)".r
+
   /**
    * Respond to commands sent to this processor.
    */
@@ -45,7 +47,7 @@ class SbtCoverageProcessor extends BasicProcessor {
               project.act("copy-test-resources")
               project.log.info("Testing code coverage")
               testCoverage(scalaProject)
-            case "report" =>
+            case ReportPattern(arg) =>
               project.act("test-compile")
               project.log.info("Instrumenting all classes for code coverage analysis")
               instrumentAllClasses(scalaProject)
@@ -55,7 +57,10 @@ class SbtCoverageProcessor extends BasicProcessor {
               project.log.info("Testing code coverage")
               testCoverage(scalaProject)
               project.log.info("Producing coverage report")
-              testCoverageReport(scalaProject)
+
+              val rawFormats = arg.split(' ').filter(!_.isEmpty)
+              val formats = if(rawFormats.isEmpty) List("html") else rawFormats
+              testCoverageReport(scalaProject, formats)
             case "clean" =>
               cleanCoverageOutput(scalaProject)
             case "" =>
@@ -182,7 +187,7 @@ class SbtCoverageProcessor extends BasicProcessor {
    *
    * @param project the project to be reported on.
    */
-  private def testCoverageReport(project: BasicScalaProject) {
+  private def testCoverageReport(project: BasicScalaProject, formats: Iterable[String]) {
     val sourceFinder = new undercover.report.SourceFinder
     val sourcePathRoots = (project.mainSourceRoots +++ project.testSourceRoots).getFiles.toList
     sourceFinder.setSourcePaths(listToJavaList(sourcePathRoots))
@@ -195,7 +200,6 @@ class SbtCoverageProcessor extends BasicProcessor {
     val reportData = builder.build()
     val outputEncoding = "UTF-8"
 
-    val formats = List("html")
     formats.foreach { format =>
       project.log.info("Generating " + format + " report")
       format match {
